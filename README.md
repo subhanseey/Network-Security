@@ -3,8 +3,8 @@
 
 A production-ready Machine Learning system for network security classification, built with FastAPI and deployed using Docker on Render.
 
-- **API:** https://your-app-name.onrender.com  
-- **API Docs:** https://your-app-name.onrender.com/docs  
+- (https://network-security-kzd9.onrender.com)
+-(https://network-security-kzd9.onrender.com/docs)
 
  Tech Stack
 Python, FastAPI, Scikit-learn, Pandas, NumPy, Docker, Render
