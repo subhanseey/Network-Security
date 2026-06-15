@@ -1,107 +1,136 @@
+import os
+import sys
 import yaml
-from networksecurity.exception.exception import NetworkSecurityException
-from networksecurity.logging.logger import logging
-import os,sys
 import numpy as np
-#import dill
-import pickle
+import dill
+import logging
 
-from sklearn.metrics import r2_score
 from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score
 
-def read_yaml_file(file_path: str) -> dict:
+from networksecurity.exception.exception import NetworkSecurityException
+
+
+# =========================
+# YAML UTILITIES
+# =========================
+
+def read_yaml_file(file_path: str):
     try:
-        with open(file_path, "rb") as yaml_file:
-            return yaml.safe_load(yaml_file)
-    except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
-    
-def write_yaml_file(file_path: str, content: object, replace: bool = False) -> None:
-    try:
-        if replace:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w") as file:
-            yaml.dump(content, file)
+        with open(file_path, "rb") as file:
+            return yaml.safe_load(file)
+
     except Exception as e:
         raise NetworkSecurityException(e, sys)
-    
-def save_numpy_array_data(file_path: str, array: np.array):
-    """
-    Save numpy array data to file
-    file_path: str location of file to save
-    array: np.array data to save
-    """
+
+
+def write_yaml_file(file_path: str, content: object, replace: bool = False):
     try:
-        dir_path = os.path.dirname(file_path)
-        os.makedirs(dir_path, exist_ok=True)
-        with open(file_path, "wb") as file_obj:
-            np.save(file_obj, array)
-    except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
-    
-def save_object(file_path: str, obj: object) -> None:
-    try:
-        logging.info("Entered the save_object method of MainUtils class")
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "wb") as file_obj:
-            pickle.dump(obj, file_obj)
-        logging.info("Exited the save_object method of MainUtils class")
+
+        mode = "w" if replace else "a"
+
+        with open(file_path, mode) as file:
+            yaml.dump(content, file)
+
     except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
-    
-def load_object(file_path: str, ) -> object:
-    try:
-        if not os.path.exists(file_path):
-            raise Exception(f"The file: {file_path} is not exists")
-        with open(file_path, "rb") as file_obj:
-            print(file_obj)
-            return pickle.load(file_obj)
-    except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
-    
-def load_numpy_array_data(file_path: str) -> np.array:
-    """
-    load numpy array data from file
-    file_path: str location of file to load
-    return: np.array data loaded
-    """
-    try:
-        with open(file_path, "rb") as file_obj:
-            return np.load(file_obj)
-    except Exception as e:
-        raise NetworkSecurityException(e, sys) from e
-    
+        raise NetworkSecurityException(e, sys)
 
 
-def evaluate_models(X_train, y_train,X_test,y_test,models,param):
+# =========================
+# OBJECT SERIALIZATION
+# =========================
+
+def save_object(file_path: str, obj: object):
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        with open(file_path, "wb") as file:
+            dill.dump(obj, file)
+
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)
+
+
+def load_object(file_path: str):
+    try:
+        with open(file_path, "rb") as file:
+            return dill.load(file)
+
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)
+
+
+# =========================
+# NUMPY UTILITIES
+# =========================
+
+def save_numpy_array_data(file_path: str, array: np.ndarray):
+    """
+    Save numpy array to file
+    """
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        with open(file_path, "wb") as file:
+            np.save(file, array)
+
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)
+
+
+def load_numpy_array_data(file_path: str):
+    """
+    Load numpy array from file
+    """
+    try:
+        return np.load(file_path)
+
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)
+
+
+# =========================
+# MODEL EVALUATION
+# =========================
+
+def evaluate_models(X_train, y_train, X_test, y_test, models, param):
     try:
         report = {}
+        best_models = {}
 
-        for i in range(len(list(models))):
-            model = list(models.values())[i]
-            para=param[list(models.keys())[i]]
+        for model_name, model in models.items():
 
-            gs = GridSearchCV(model,para,cv=3)
-            gs.fit(X_train,y_train)
+            params = param.get(model_name, {})
 
-            model.set_params(**gs.best_params_)
-            model.fit(X_train,y_train)
+            gs = GridSearchCV(
+                estimator=model,
+                param_grid=params,
+                cv=3,
+                n_jobs=-1,
+                verbose=1
+            )
 
-            #model.fit(X_train, y_train)  # Train model
+            gs.fit(X_train, y_train)
 
-            y_train_pred = model.predict(X_train)
+            best_model = gs.best_estimator_
+            best_models[model_name] = best_model
 
-            y_test_pred = model.predict(X_test)
+            y_train_pred = best_model.predict(X_train)
+            y_test_pred = best_model.predict(X_test)
 
-            train_model_score = r2_score(y_train, y_train_pred)
+            train_score = accuracy_score(y_train, y_train_pred)
+            test_score = accuracy_score(y_test, y_test_pred)
 
-            test_model_score = r2_score(y_test, y_test_pred)
+            logging.info(
+                f"{model_name} -> "
+                f"Train Accuracy: {train_score:.4f}, "
+                f"Test Accuracy: {test_score:.4f}"
+            )
 
-            report[list(models.keys())[i]] = test_model_score
+            report[model_name] = test_score
 
-        return report
+        return report, best_models
 
     except Exception as e:
         raise NetworkSecurityException(e, sys)
